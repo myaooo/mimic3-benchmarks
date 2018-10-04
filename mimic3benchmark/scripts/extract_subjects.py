@@ -1,8 +1,10 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+import numpy as np
 import argparse
 import yaml
+import json
 import os
 
 from mimic3benchmark.mimic3csv import *
@@ -20,6 +22,7 @@ parser.add_argument('--phenotype_definitions', '-p', type=str,
 parser.add_argument('--itemids_file', '-i', type=str, help='CSV containing list of ITEMIDs to keep.')
 parser.add_argument('--verbose', '-v', type=int, help='Level of verbosity in output.', default=1)
 parser.add_argument('--test', action='store_true', help='TEST MODE: process only 1000 subjects, 1000000 events.')
+parser.add_argument('--redo', action='store_true', help='Redo the computation of subjects stays and diagnoses files')
 args, _ = parser.parse_known_args()
 
 try:
@@ -71,11 +74,21 @@ if args.test:
     args.event_tables = [args.event_tables[0]]
     print('Using only', stays.shape[0], 'stays and only', args.event_tables[0], 'table')
 
-subjects = stays.SUBJECT_ID.unique()
-break_up_stays_by_subject(stays, args.output_path, subjects=subjects, verbose=args.verbose)
-break_up_diagnoses_by_subject(phenotypes, args.output_path, subjects=subjects, verbose=args.verbose)
+subjects_file = os.path.join(args.output_path, 'subjects.json')
+if os.path.isfile(subjects_file):
+    with open(subjects_file, 'r') as f:
+        subjects = np.array(json.load(f))
+else:
+    subjects = stays.SUBJECT_ID.unique()
+    with open(subjects_file, 'w') as f:
+        json.dump(subjects.tolist(), f)
+
+subjects_path = os.path.join(args.output_path, 'subjects')
+
+break_up_stays_by_subject(stays, subjects_path, subjects=subjects, verbose=args.verbose, redo=args.redo)
+break_up_diagnoses_by_subject(phenotypes, subjects_path, subjects=subjects, verbose=args.verbose, redo=args.redo)
 items_to_keep = set(
     [int(itemid) for itemid in dataframe_from_csv(args.itemids_file)['ITEMID'].unique()]) if args.itemids_file else None
 for table in args.event_tables:
-    read_events_table_and_break_up_by_subject(args.mimic3_path, table, args.output_path, items_to_keep=items_to_keep,
+    read_events_table_and_break_up_by_subject(args.mimic3_path, table, subjects_path, items_to_keep=items_to_keep,
                                               subjects_to_keep=subjects, verbose=args.verbose)

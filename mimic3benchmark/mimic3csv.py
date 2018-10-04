@@ -1,11 +1,13 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+import tqdm
 import csv
 import numpy as np
 import os
 import pandas as pd
 import sys
+from multiprocessing import Pool
 
 from mimic3benchmark.util import *
 
@@ -44,11 +46,23 @@ def read_icd_diagnoses_table(mimic3_path):
 
 
 def read_events_table_by_row(mimic3_path, table):
-    nb_rows = {'chartevents': 330712484, 'labevents': 27854056, 'outputevents': 4349219}
+    nb_rows = {'chartevents': 330712484, 'labevents': 27854056, 'outputevents': 4349219, 
+                'inputevents_cv': 17527936, 'inputevents_mv': 3618992}
     reader = csv.DictReader(open(os.path.join(mimic3_path, table.upper() + '.csv'), 'r'))
     for i, row in enumerate(reader):
         if 'ICUSTAY_ID' not in row:
             row['ICUSTAY_ID'] = ''
+        # Fix inputevents_cv/mv
+        if 'VALUE' not in row and 'AMOUNT' in row:
+            row['VALUE'] = row['AMOUNT']
+        if 'VALUEUOM' not in row and 'AMOUNTUOM' in row:
+            row['VALUEUOM'] = row['AMOUNTUOM']
+        # Fix inputevents_mv
+        if 'CHARTTIME' not in row and 'STARTTIME' in row:
+            row['CHARTTIME'] = row['STARTTIME']
+        if row['CHARTTIME'] == '' or 'VALUE' not in row:
+            continue
+
         yield row, i, nb_rows[table.lower()]
 
 
@@ -113,38 +127,37 @@ def filter_diagnoses_on_stays(diagnoses, stays):
                            left_on=['SUBJECT_ID', 'HADM_ID'], right_on=['SUBJECT_ID', 'HADM_ID'])
 
 
-def break_up_stays_by_subject(stays, output_path, subjects=None, verbose=1):
+def break_up_stays_by_subject(stays, output_path, subjects=None, verbose=1, redo=False):
     subjects = stays.SUBJECT_ID.unique() if subjects is None else subjects
-    nb_subjects = subjects.shape[0]
-    for i, subject_id in enumerate(subjects):
-        if verbose:
-            sys.stdout.write('\rSUBJECT {0} of {1}...'.format(i+1, nb_subjects))
+    # nb_subjects = subjects.shape[0]
+
+    for subject_id in tqdm.tqdm(subjects):
+        # if verbose:
+            # sys.stdout.write('\rSUBJECT {0} of {1}...'.format(i+1, nb_subjects))
         dn = os.path.join(output_path, str(subject_id))
-        try:
-            os.makedirs(dn)
-        except:
-            pass
+        stays_file = os.path.join(dn, 'stays.csv')
+        if redo or not os.path.isfile(stays_file):
+            if not os.path.exists(dn):
+                os.makedirs(dn)
+            stays.ix[stays.SUBJECT_ID == subject_id].sort_values(by='INTIME').to_csv(stays_file, index=False)
+    # if verbose:
+        # sys.stdout.write('DONE!\n')
 
-        stays.ix[stays.SUBJECT_ID == subject_id].sort_values(by='INTIME').to_csv(os.path.join(dn, 'stays.csv'), index=False)
-    if verbose:
-        sys.stdout.write('DONE!\n')
 
-
-def break_up_diagnoses_by_subject(diagnoses, output_path, subjects=None, verbose=1):
+def break_up_diagnoses_by_subject(diagnoses, output_path, subjects=None, verbose=1, redo=False):
     subjects = diagnoses.SUBJECT_ID.unique() if subjects is None else subjects
-    nb_subjects = subjects.shape[0]
-    for i, subject_id in enumerate(subjects):
-        if verbose:
-            sys.stdout.write('\rSUBJECT {0} of {1}...'.format(i+1, nb_subjects))
+    # nb_subjects = subjects.shape[0]
+    for subject_id in tqdm.tqdm(subjects):
+        # if verbose:
+            # sys.stdout.write('\rSUBJECT {0} of {1}...'.format(i+1, nb_subjects))
         dn = os.path.join(output_path, str(subject_id))
-        try:
-            os.makedirs(dn)
-        except:
-            pass
-
-        diagnoses.ix[diagnoses.SUBJECT_ID == subject_id].sort_values(by=['ICUSTAY_ID', 'SEQ_NUM']).to_csv(os.path.join(dn, 'diagnoses.csv'), index=False)
-    if verbose:
-        sys.stdout.write('DONE!\n')
+        diagnoses_file = os.path.join(dn, 'diagnoses.csv')
+        if redo or not os.path.isfile(diagnoses_file):
+            if not os.path.exists(dn):
+                os.makedirs(dn)
+            diagnoses.ix[diagnoses.SUBJECT_ID == subject_id].sort_values(by=['ICUSTAY_ID', 'SEQ_NUM']).to_csv(diagnoses_file, index=False)
+    # if verbose:
+        # sys.stdout.write('DONE!\n')
 
 
 def read_events_table_and_break_up_by_subject(mimic3_path, table, output_path, items_to_keep=None, subjects_to_keep=None, verbose=1):
