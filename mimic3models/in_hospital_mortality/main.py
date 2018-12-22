@@ -17,6 +17,8 @@ from mimic3models import common_utils
 
 from keras.callbacks import ModelCheckpoint, CSVLogger
 
+os.environ["CUDA_VISIBLE_DEVICES"] = '1'
+
 parser = argparse.ArgumentParser()
 common_utils.add_common_arguments(parser)
 parser.add_argument('--target_repl_coef', type=float, default=0.0)

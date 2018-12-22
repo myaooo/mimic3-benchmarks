@@ -12,7 +12,7 @@ class Network(Model):
 
     def __init__(self, dim, batch_norm, dropout, rec_dropout, task,
                  target_repl=False, deep_supervision=False, num_classes=1,
-                 depth=1, input_dim=76, **kwargs):
+                 is_bidirectional=False, depth=1, input_dim=76, **kwargs):
 
         print("==> not used params in network class:", kwargs.keys())
 
@@ -35,14 +35,15 @@ class Network(Model):
         # Input layers and masking
         X = Input(shape=(None, input_dim), name='X')
         inputs = [X]
-        mX = Masking()(X)
+        # mX = Masking()(X)
+        mX = X
 
         if deep_supervision:
             M = Input(shape=(None,), name='M')
             inputs.append(M)
 
         # Configurations
-        is_bidirectional = True
+        # is_bidirectional = True
         if deep_supervision:
             is_bidirectional = False
 
