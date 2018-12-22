@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 
 import argparse
+import warnings
 
 import os
 import sys
@@ -34,35 +35,31 @@ for subject_dir in os.listdir(args.subjects_root_path):
             raise Exception
     except:
         continue
-    sys.stdout.write('Subject {}: '.format(subject_id))
-    sys.stdout.flush()
+    print('Subject {}: '.format(subject_id))
 
     try:
-        sys.stdout.write('reading...')
-        sys.stdout.flush()
         stays = read_stays(os.path.join(args.subjects_root_path, subject_dir))
         diagnoses = read_diagnoses(os.path.join(args.subjects_root_path, subject_dir))
         events = read_events(os.path.join(args.subjects_root_path, subject_dir))
     except:
-        sys.stdout.write('error reading from disk!\n')
+        warnings.warn('error reading from disk!\n')
         continue
     else:
-        sys.stdout.write('got {0} stays, {1} diagnoses, {2} events...'.format(stays.shape[0], diagnoses.shape[0], events.shape[0]))
-        sys.stdout.flush()
+        print('got {0} stays, {1} diagnoses, {2} events...'.format(stays.shape[0], diagnoses.shape[0], events.shape[0]))
 
     episodic_data = assemble_episodic_data(stays, diagnoses)
 
-    sys.stdout.write('cleaning and converting to time series...')
-    sys.stdout.flush()
+    if args.verbose > 1:
+        print('cleaning and converting to time series...')
     events = map_itemids_to_variables(events, var_map)
     events = clean_events(events)
     if events.shape[0] == 0:
-        sys.stdout.write('no valid events!\n')
+        warnings.warn('No valid events for subject!\n')
         continue
     timeseries = convert_events_to_timeseries(events, variables=variables)
 
-    sys.stdout.write('extracting separate episodes...')
-    sys.stdout.flush()
+    if args.verbose > 1:
+        print('extracting separate episodes...')
 
     for i in range(stays.shape[0]):
         stay_id = stays.ICUSTAY_ID.iloc[i]
